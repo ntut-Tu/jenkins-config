@@ -1,0 +1,58 @@
+jenkins:
+  systemMessage: "PDD Jenkins — managed by jenkins-config"
+  numExecutors: 0
+  mode: EXCLUSIVE
+  disableRememberMe: true
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: {{ s.admin_user | scalar }}
+          password: "${admin_password}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+  crumbIssuer:
+    standard: {}
+  nodes:
+    - permanent:
+        name: docker-agent
+        remoteFS: /home/jenkins/agent
+        numExecutors: 1
+        labelString: pdd-test
+        mode: EXCLUSIVE
+        launcher:
+          inbound:
+            workDirSettings:
+              disabled: false
+              internalDir: remoting
+              failIfWorkDirIsMissing: false
+        retentionStrategy: always
+security:
+  queueItemAuthenticator:
+    authenticators:
+      - project:
+          enabledStrategies:
+            - org.jenkinsci.plugins.authorizeproject.strategy.SpecificUsersAuthorizationStrategy
+          disabledStrategies:
+            - org.jenkinsci.plugins.authorizeproject.strategy.AnonymousAuthorizationStrategy
+            - org.jenkinsci.plugins.authorizeproject.strategy.TriggeringUsersAuthorizationStrategy
+            - org.jenkinsci.plugins.authorizeproject.strategy.SystemAuthorizationStrategy
+unclassified:
+  location:
+    url: {{ s.jenkins_url | scalar }}
+{% if s.git_credentials %}
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: pipeline-git
+              username: "${git_username}"
+              password: "${git_token}"
+              description: Read-only access to the trusted pipelines repository
+{% endif %}
+jobs:
+  - script: |
+{% filter indent(6, true) %}{% include 'seed-job.groovy.j2' %}{% endfilter %}

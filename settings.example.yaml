@@ -1,0 +1,16 @@
+project: pdd-jenkins
+controller_image: ghcr.io/your-org/pdd-jenkins-controller:v1.0.0
+agent_image: ghcr.io/your-org/pdd-jenkins-agent:v1.0.0
+docker_socket: /var/run/docker.sock
+docker_socket_gid: 0
+jenkins_url: http://localhost:18080/
+http_port: 18080
+admin_user: admin
+# Optional: set your password in settings.local.yaml; null preserves/generates a secret.
+admin_password: null
+pipeline_repo: https://github.com/your-org/jenkins-pipelines.git
+pipeline_branch: main
+# Seed synchronizes these definitions; individual Job paths belong to the pipelines repo.
+seed_dsl: jobs/**/*.groovy
+seed_poll: 'H/5 * * * *'
+git_credentials: false

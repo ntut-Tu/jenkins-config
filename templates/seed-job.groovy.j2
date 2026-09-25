@@ -1,0 +1,24 @@
+{% set seed_pipeline %}{% include 'seed-pipeline.groovy.j2' %}{% endset %}
+pipelineJob('seed') {
+    description('Synchronize Job DSL from the trusted pipelines repository.')
+    properties {
+        pipelineTriggers {
+            triggers {
+                pollSCM { scmpoll_spec({{ s.seed_poll | groovy }}) }
+            }
+        }
+    }
+    configure { project ->
+        project / 'properties' / 'org.jenkinsci.plugins.authorizeproject.AuthorizeProjectProperty' {
+            strategy(class: 'org.jenkinsci.plugins.authorizeproject.strategy.SpecificUsersAuthorizationStrategy') {
+                userid({{ s.admin_user | groovy }})
+            }
+        }
+    }
+    definition {
+        cps {
+            script({{ seed_pipeline | groovy }})
+            sandbox()
+        }
+    }
+}

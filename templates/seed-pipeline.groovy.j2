@@ -1,0 +1,34 @@
+properties([
+    [$class: 'AuthorizeProjectProperty', strategy: [$class: 'SpecificUsersAuthorizationStrategy', userid: {{ s.admin_user | groovy }}]],
+    disableConcurrentBuilds(),
+    buildDiscarder(logRotator(numToKeepStr: '30')),
+    pipelineTriggers([pollSCM({{ s.seed_poll | groovy }})])
+])
+def syncJobs = {
+    try {
+        stage('Checkout definitions') {
+            checkout([$class: 'GitSCM',
+                branches: [[name: {{ s.pipeline_branch | groovy }}]],
+                userRemoteConfigs: [[url: {{ s.pipeline_repo | groovy }}{% if s.git_credentials %}, credentialsId: 'pipeline-git'{% endif %}]]])
+        }
+        stage('Synchronize jobs') {
+            jobDsl targets: {{ s.seed_dsl | groovy }},
+                sandbox: true,
+                failOnMissingPlugin: true,
+                failOnSeedCollision: true,
+                removedJobAction: 'DISABLE',
+                removedViewAction: 'IGNORE',
+                lookupStrategy: 'JENKINS_ROOT',
+                additionalParameters: [
+                    PIPELINE_REPO: {{ s.pipeline_repo | groovy }},
+                    PIPELINE_BRANCH: {{ s.pipeline_branch | groovy }},
+                    PIPELINE_CREDENTIALS: {{ ('pipeline-git' if s.git_credentials else '') | groovy }}
+                ]
+        }
+    } finally {
+        deleteDir()
+    }
+}
+timeout(time: 10, unit: 'MINUTES') {
+    node('pdd-test') { syncJobs() }
+}
