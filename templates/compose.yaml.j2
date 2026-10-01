@@ -29,6 +29,9 @@ services:
   agent:
     image: {{ s.agent_image | scalar }}
     restart: unless-stopped
+    environment:
+      TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
+    extra_hosts: ['host.docker.internal:host-gateway']
     depends_on:
       controller: {condition: service_healthy}
     command: [-url, 'http://controller:8080/', -name, docker-agent, -secret, '@/run/secrets/agent_secret', -webSocket, -workDir, /home/jenkins/agent]
