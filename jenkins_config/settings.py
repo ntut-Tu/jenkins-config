@@ -22,6 +22,7 @@ class Settings:
     seed_dsl: str
     seed_poll: str
     git_credentials: bool
+    application_git_credentials: bool = False
     admin_password: str | None = field(default=None, repr=False)
 
     def __post_init__(self):
@@ -33,9 +34,9 @@ class Settings:
             elif key in ('http_port', 'docker_socket_gid'):
                 if type(value) is not int:
                     raise ValueError(f'{key} must be an integer')
-            elif key == 'git_credentials':
+            elif key in ('git_credentials', 'application_git_credentials'):
                 if type(value) is not bool:
-                    raise ValueError('git_credentials must be a boolean')
+                    raise ValueError(f'{key} must be a boolean')
             elif not isinstance(value, str) or not value or any(t in value for t in ('\n', '\r', '${', '{{', '}}')):
                 raise ValueError(f'Invalid {key}')
         patterns = {

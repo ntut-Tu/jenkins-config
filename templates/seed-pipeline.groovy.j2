@@ -22,7 +22,8 @@ def syncJobs = {
                 additionalParameters: [
                     PIPELINE_REPO: {{ s.pipeline_repo | groovy }},
                     PIPELINE_BRANCH: {{ s.pipeline_branch | groovy }},
-                    PIPELINE_CREDENTIALS: {{ ('pipeline-git' if s.git_credentials else '') | groovy }}
+                    PIPELINE_CREDENTIALS: {{ ('pipeline-git' if s.git_credentials else '') | groovy }},
+                    APPLICATION_CREDENTIALS: {{ ('application-git' if s.application_git_credentials else 'none') | groovy }}
                 ]
         }
     } finally {

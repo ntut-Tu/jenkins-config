@@ -41,17 +41,27 @@ security:
 unclassified:
   location:
     url: {{ s.jenkins_url | scalar }}
-{% if s.git_credentials %}
+{% if s.git_credentials or s.application_git_credentials %}
 credentials:
   system:
     domainCredentials:
       - credentials:
+{% if s.git_credentials %}
           - usernamePassword:
               scope: GLOBAL
               id: pipeline-git
               username: "${git_username}"
               password: "${git_token}"
               description: Read-only access to the trusted pipelines repository
+{% endif %}
+{% if s.application_git_credentials %}
+          - usernamePassword:
+              scope: GLOBAL
+              id: application-git
+              username: "${application_git_username}"
+              password: "${application_git_token}"
+              description: Read-only access to the application repository under test
+{% endif %}
 {% endif %}
 jobs:
   - script: |

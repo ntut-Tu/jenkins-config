@@ -43,13 +43,29 @@ class ConfigurationTests(unittest.TestCase):
         self.assertNotIn('podTemplate',script)
 
     def test_secrets_remain_references_and_groovy_values_escaped(self):
-        self.values.update(git_credentials=True,pipeline_repo="https://git.example.org/it's.git")
+        self.values.update(git_credentials=True,application_git_credentials=True,pipeline_repo="https://git.example.org/it's.git")
         compose,casc=self.render()
-        credential=casc['credentials']['system']['domainCredentials'][0]['credentials'][0]['usernamePassword']
-        self.assertEqual(credential['password'],'${git_token}')
+        credentials=[item['usernamePassword'] for item in casc['credentials']['system']['domainCredentials'][0]['credentials']]
+        self.assertEqual({item['id'] for item in credentials},{'pipeline-git','application-git'})
+        self.assertEqual({item['password'] for item in credentials},{'${git_token}','${application_git_token}'})
         self.assertEqual(compose['services']['agent']['secrets'],['agent_secret'])
         self.assertIn('git_token',compose['services']['controller']['secrets'])
+        self.assertIn('application_git_token',compose['services']['controller']['secrets'])
         self.assertIn("it\\\\\\'s.git",casc['jobs'][0]['script'])
+        self.assertIn('APPLICATION_CREDENTIALS:',casc['jobs'][0]['script'])
+
+    def test_application_credential_can_be_enabled_without_private_pipeline(self):
+        self.values['application_git_credentials']=True
+        compose,casc=self.render()
+        credentials=casc['credentials']['system']['domainCredentials'][0]['credentials']
+        self.assertEqual([item['usernamePassword']['id'] for item in credentials],['application-git'])
+        self.assertNotIn('git_token',compose['services']['controller']['secrets'])
+        self.secrets.initialize()
+        with self.assertRaises(FileNotFoundError):
+            self.secrets.validate(False,True)
+        (self.secrets.directory/'application_git_username').write_text('test-user')
+        (self.secrets.directory/'application_git_token').write_text('test-token')
+        self.secrets.validate(False,True)
 
     def test_compose_escapes_dollar_in_host_paths(self):
         self.state=self.root/'state$literal'
@@ -60,7 +76,7 @@ class ConfigurationTests(unittest.TestCase):
 
     def test_invalid_settings_are_rejected_before_render(self):
         self.render();before=(self.state/'compose.yaml').read_bytes()
-        cases=[('http_port',True),('docker_socket_gid',-1),('docker_socket','relative'),('controller_image','org/image:latest'),('controller_image','org/image@sha256:bad'),('pipeline_repo','https://user:secret@example.org/r'),('seed_dsl','../jobs'),('pipeline_branch','${SECRET}'),('kubernetes',{}),('unknown','x')]
+        cases=[('http_port',True),('docker_socket_gid',-1),('docker_socket','relative'),('controller_image','org/image:latest'),('controller_image','org/image@sha256:bad'),('pipeline_repo','https://user:secret@example.org/r'),('seed_dsl','../jobs'),('pipeline_branch','${SECRET}'),('application_git_credentials','true'),('kubernetes',{}),('unknown','x')]
         for key,value in cases:
             with self.subTest(key=key):
                 settings=copy.deepcopy(self.values);settings[key]=value

@@ -14,3 +14,4 @@ pipeline_branch: main
 seed_dsl: jobs/**/*.groovy
 seed_poll: 'H/5 * * * *'
 git_credentials: false
+application_git_credentials: false

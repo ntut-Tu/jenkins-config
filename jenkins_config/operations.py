@@ -49,8 +49,13 @@ class SecretStore:
             raise ValueError(f'Empty secret file: {name}')
         return value
 
-    def validate(self, git_credentials):
-        for name in ['admin_password'] + (['git_username', 'git_token'] if git_credentials else []):
+    def validate(self, git_credentials, application_git_credentials=False):
+        names = ['admin_password']
+        if git_credentials:
+            names.extend(['git_username', 'git_token'])
+        if application_git_credentials:
+            names.extend(['application_git_username', 'application_git_token'])
+        for name in names:
             self.read(name)
 
 
@@ -73,7 +78,7 @@ class DeploymentManager:
             raise ValueError('Replace example image/repository locations before starting')
         if self.settings.admin_password is not None:
             self.secrets.initialize(self.settings.admin_password)
-        self.secrets.validate(self.settings.git_credentials)
+        self.secrets.validate(self.settings.git_credentials, self.settings.application_git_credentials)
         self.render()
         if self.settings.admin_password is not None:
             self.secrets.set_admin_password(self.settings.admin_password)
@@ -99,7 +104,7 @@ class DeploymentManager:
     def reload(self):
         if self.settings.admin_password is not None and self.settings.admin_password != self.secrets.read('admin_password'):
             raise ValueError('Use deploy.sh or up to apply a changed admin_password')
-        self.secrets.validate(self.settings.git_credentials)
+        self.secrets.validate(self.settings.git_credentials, self.settings.application_git_credentials)
         self.render()
         self.client.request('configuration-as-code/reload', b'')
         self.seed()
