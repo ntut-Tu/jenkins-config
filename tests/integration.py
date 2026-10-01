@@ -86,9 +86,12 @@ def main():
         sock.bind(('127.0.0.1', 0))
         port = sock.getsockname()[1]
     settings = manage.load_settings(ROOT / 'settings.example.yaml')
-    settings.update(project=project, controller_image=args.controller_image, agent_image=args.agent_image, docker_socket=args.docker_socket, docker_socket_gid=args.docker_socket_gid,
-        http_port=port, jenkins_url=f'http://localhost:{port}/', pipeline_repo='http://scm:8000/pipelines.git')
-    settings['seed_poll'] = 'H H 1 1 *'
+    settings['project']['name'] = project
+    settings['images'].update(controller=args.controller_image, agent=args.agent_image)
+    settings['docker'].update(socket=args.docker_socket, socket_gid=args.docker_socket_gid)
+    settings['jenkins'].update(http_port=port, url=f'http://localhost:{port}/')
+    settings['pipeline']['repository']['url'] = 'http://scm:8000/pipelines.git'
+    settings['pipeline']['seed']['poll'] = 'H H 1 1 *'
     settings_path = work / 'settings.yaml'
     manage.write_yaml(settings_path, settings)
     state, secrets = work / 'runtime', work / 'secrets'

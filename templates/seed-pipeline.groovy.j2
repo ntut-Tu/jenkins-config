@@ -1,18 +1,18 @@
 properties([
-    [$class: 'AuthorizeProjectProperty', strategy: [$class: 'SpecificUsersAuthorizationStrategy', userid: {{ s.admin_user | groovy }}]],
+    [$class: 'AuthorizeProjectProperty', strategy: [$class: 'SpecificUsersAuthorizationStrategy', userid: {{ s.jenkins.admin.user | groovy }}]],
     disableConcurrentBuilds(),
     buildDiscarder(logRotator(numToKeepStr: '30')),
-    pipelineTriggers([pollSCM({{ s.seed_poll | groovy }})])
+    pipelineTriggers([pollSCM({{ s.pipeline.seed.poll | groovy }})])
 ])
 def syncJobs = {
     try {
         stage('Checkout definitions') {
             checkout([$class: 'GitSCM',
-                branches: [[name: {{ s.pipeline_branch | groovy }}]],
-                userRemoteConfigs: [[url: {{ s.pipeline_repo | groovy }}{% if s.git_credentials %}, credentialsId: 'pipeline-git'{% endif %}]]])
+                branches: [[name: {{ s.pipeline.repository.branch | groovy }}]],
+                userRemoteConfigs: [[url: {{ s.pipeline.repository.url | groovy }}{% if s.credentials.pipeline_git.enabled %}, credentialsId: 'pipeline-git'{% endif %}]]])
         }
         stage('Synchronize jobs') {
-            jobDsl targets: {{ s.seed_dsl | groovy }},
+            jobDsl targets: {{ s.pipeline.seed.dsl | groovy }},
                 sandbox: true,
                 failOnMissingPlugin: true,
                 failOnSeedCollision: true,
@@ -20,10 +20,10 @@ def syncJobs = {
                 removedViewAction: 'IGNORE',
                 lookupStrategy: 'JENKINS_ROOT',
                 additionalParameters: [
-                    PIPELINE_REPO: {{ s.pipeline_repo | groovy }},
-                    PIPELINE_BRANCH: {{ s.pipeline_branch | groovy }},
-                    PIPELINE_CREDENTIALS: {{ ('pipeline-git' if s.git_credentials else '') | groovy }},
-                    APPLICATION_CREDENTIALS: {{ ('application-git' if s.application_git_credentials else 'none') | groovy }}
+                    PIPELINE_REPO: {{ s.pipeline.repository.url | groovy }},
+                    PIPELINE_BRANCH: {{ s.pipeline.repository.branch | groovy }},
+                    PIPELINE_CREDENTIALS: {{ ('pipeline-git' if s.credentials.pipeline_git.enabled else '') | groovy }},
+                    APPLICATION_CREDENTIALS: {{ ('application-git' if s.credentials.application_git.enabled else 'none') | groovy }}
                 ]
         }
     } finally {

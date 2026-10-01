@@ -6,10 +6,13 @@ import re
 import secrets
 import subprocess
 import xml.etree.ElementTree as ET
+import yaml
 
 from .client import JenkinsClient
 from .render import TemplateRenderer
 from .settings import Settings
+
+GIT_SECRET_NAMES = {'git_username', 'git_token', 'application_git_username', 'application_git_token'}
 
 
 class ComposeClient:
@@ -37,11 +40,48 @@ class SecretStore:
 
     def set_admin_password(self, password):
         self.initialize(password)
-        path = self.directory / 'admin_password'
+        self.write('admin_password', password)
+
+    def write(self, name, value):
+        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        path = self.directory / name
+        try:
+            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            pass
+        else:
+            with os.fdopen(descriptor, 'w') as stream:
+                stream.write(value)
         # Preserve the bind-mounted inode when updating an existing secret.
         path.chmod(0o600)
-        if self.read('admin_password') != password:
-            path.write_text(password)
+        if path.read_text().strip() != value:
+            path.write_text(value)
+
+    def git_values(self, settings):
+        for credential, names in (
+                (settings.credentials.pipeline_git, ('git_username', 'git_token')),
+                (settings.credentials.application_git, ('application_git_username', 'application_git_token'))):
+            if credential.enabled:
+                yield names[0], credential.username
+                yield names[1], credential.token
+
+    def sync_git(self, settings):
+        changed = False
+        for name, value in self.git_values(settings):
+            path = self.directory / name
+            if not path.exists() or path.read_text().strip() != value:
+                changed = True
+            self.write(name, value)
+        return changed
+
+    def git_matches(self, settings):
+        for name, value in self.git_values(settings):
+            try:
+                if self.read(name) != value:
+                    return False
+            except (FileNotFoundError, ValueError):
+                return False
+        return True
 
     def read(self, name):
         value = (self.directory / name).read_text().strip()
@@ -72,19 +112,32 @@ class DeploymentManager:
     def render(self):
         self.renderer.render(self.settings, self.state, self.secrets.directory)
 
+    def mounted_git_secrets(self):
+        try:
+            rendered = yaml.safe_load((self.state / 'compose.yaml').read_text())
+            mounted = set(rendered['services']['controller'].get('secrets', []))
+        except (FileNotFoundError, KeyError, TypeError):
+            return set()
+        return mounted & GIT_SECRET_NAMES
+
     def up(self):
         if any('your-org' in value for value in (
-                self.settings.controller_image, self.settings.agent_image, self.settings.pipeline_repo)):
+                self.settings.images.controller, self.settings.images.agent,
+                self.settings.pipeline.repository.url)):
             raise ValueError('Replace example image/repository locations before starting')
-        if self.settings.admin_password is not None:
-            self.secrets.initialize(self.settings.admin_password)
-        self.secrets.validate(self.settings.git_credentials, self.settings.application_git_credentials)
+        if self.settings.jenkins.admin.password is not None:
+            self.secrets.initialize(self.settings.jenkins.admin.password)
+        old_mounts = self.mounted_git_secrets()
+        required_mounts = {name for name, _ in self.secrets.git_values(self.settings)}
+        credentials_changed = self.secrets.sync_git(self.settings)
+        self.secrets.validate(self.settings.credentials.pipeline_git.enabled,
+                              self.settings.credentials.application_git.enabled)
         self.render()
-        if self.settings.admin_password is not None:
-            self.secrets.set_admin_password(self.settings.admin_password)
+        if self.settings.jenkins.admin.password is not None:
+            self.secrets.set_admin_password(self.settings.jenkins.admin.password)
         secret_path = self.state / 'agent_secret'
         secret_path.touch(exist_ok=True)
-        recreate = ('--force-recreate',) if self.settings.admin_password is not None else ()
+        recreate = ('--force-recreate',) if self.settings.jenkins.admin.password is not None or credentials_changed or old_mounts != required_mounts else ()
         self.compose.execute('up', '-d', '--wait', '--wait-timeout', '300', *recreate, 'controller')
         self.client.wait()
         # Also apply changed settings when Compose reused an already-running controller.
@@ -102,9 +155,14 @@ class DeploymentManager:
         self.seed()
 
     def reload(self):
-        if self.settings.admin_password is not None and self.settings.admin_password != self.secrets.read('admin_password'):
+        if (self.settings.jenkins.admin.password is not None
+                and self.settings.jenkins.admin.password != self.secrets.read('admin_password')):
             raise ValueError('Use deploy.sh or up to apply a changed admin_password')
-        self.secrets.validate(self.settings.git_credentials, self.settings.application_git_credentials)
+        required = {name for name, _ in self.secrets.git_values(self.settings)}
+        if not self.secrets.git_matches(self.settings) or required != self.mounted_git_secrets():
+            raise ValueError('Use deploy.sh or up to apply changed Git credentials')
+        self.secrets.validate(self.settings.credentials.pipeline_git.enabled,
+                              self.settings.credentials.application_git.enabled)
         self.render()
         self.client.request('configuration-as-code/reload', b'')
         self.seed()

@@ -26,7 +26,7 @@ def main():
     compose = ComposeClient(state)
     if args.action == 'init':
         settings = Settings.load(args.settings) if args.settings.exists() else None
-        secret_store.initialize(settings.admin_password if settings else None)
+        secret_store.initialize(settings.jenkins.admin.password if settings else None)
         print(f'Admin password retained in {secret_store.directory}/admin_password (value not printed).')
         return
     if args.action in ('down', 'status'):
@@ -38,8 +38,9 @@ def main():
         renderer.render(settings, state, secret_store.directory)
         print(f'Rendered Compose and JCasC to {state}')
         return
-    password = settings.admin_password if args.action == 'up' and settings.admin_password is not None else secret_store.read('admin_password')
-    client = JenkinsClient(f'http://127.0.0.1:{settings.http_port}', settings.admin_user, password)
+    password = (settings.jenkins.admin.password if args.action == 'up' and settings.jenkins.admin.password is not None
+                else secret_store.read('admin_password'))
+    client = JenkinsClient(f'http://127.0.0.1:{settings.jenkins.http_port}', settings.jenkins.admin.user, password)
     manager = DeploymentManager(settings, state, renderer, compose, secret_store, client)
     getattr(manager, args.action)()
     print(f'{args.action} completed; seed queued. Check its build result in Jenkins.')

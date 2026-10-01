@@ -1,17 +1,53 @@
-project: pdd-jenkins
-controller_image: ghcr.io/your-org/pdd-jenkins-controller:v1.0.0
-agent_image: ghcr.io/your-org/pdd-jenkins-agent:v1.0.0
-docker_socket: /var/run/docker.sock
-docker_socket_gid: 0
-jenkins_url: http://localhost:18080/
-http_port: 18080
-admin_user: admin
-# Optional: set your password in settings.local.yaml; null preserves/generates a secret.
-admin_password: null
-pipeline_repo: https://github.com/your-org/jenkins-pipelines.git
-pipeline_branch: main
-# Seed synchronizes these definitions; individual Job paths belong to the pipelines repo.
-seed_dsl: jobs/**/*.groovy
-seed_poll: 'H/5 * * * *'
-git_credentials: false
-application_git_credentials: false
+# Docker Compose 的部署識別名稱，與 Git 專案名稱無關。
+project:
+  # 已部署後改名會建立另一組容器、網路與資料 volume；原 Jenkins 資料不會自動搬移。
+  name: pdd-jenkins
+
+# Jenkins controller 與 agent 使用的映像；請指定明確版本或 digest。
+images:
+  controller: ghcr.io/ntut-tu/pdd-jenkins-controller:v1.0.4
+  agent: ghcr.io/ntut-tu/pdd-jenkins-agent:v1.0.4
+
+# Agent 使用的宿主 Docker daemon 與 socket 群組。
+docker:
+  socket: /var/run/docker.sock
+  # Linux 上可用 stat -c %g /var/run/docker.sock 查詢。
+  socket_gid: 0
+
+# Jenkins 對外網址、主機監聽 port 與管理員帳號。
+jenkins:
+  # Jenkins 產生連結所用的根網址，須與實際連入的位址一致。
+  url: http://localhost:18080/
+  http_port: 18080
+  # 管理員帳號只用於這套 Jenkins，不是 Git 帳號。
+  admin:
+    user: admin
+    # null 會沿用現有密碼；首次部署時才產生隨機密碼。
+    password: null
+
+# Pipeline 定義的來源與 seed 同步方式；被測專案的 URL／branch 寫在 Jenkinsfile。
+pipeline:
+  # 存放 Job DSL 與 Jenkinsfile 的 Git repo。
+  repository:
+    url: https://github.com/ntut-tu/jenkins-pipelines.git
+    # 要讀取的 pipeline repo 分支，不是被測專案分支。
+    branch: main
+  # seed 建立／更新 Job 的規則。
+  seed:
+    # 從 pipeline repo 載入 Job DSL。
+    dsl: jobs/**/*.groovy
+    # 只輪詢 pipeline repo 並觸發 seed；不會自動執行被測專案 Job。
+    poll: 'H/5 * * * *'
+
+# Jenkins 要使用的 Git 憑證；目前各支援一組 pipeline repo 與被測 repo。
+credentials:
+  # 公開 pipeline repo：維持 false／null；private：設 true，並填有讀取權限的帳號與 token，URL 須為 HTTPS。
+  pipeline_git:
+    enabled: false
+    username: null
+    token: null
+  # 公開被測 repo：維持 false／null；private：設 true，並填該 repo 的帳號與唯讀 token，Jenkinsfile 的 URL 須為 HTTPS。
+  application_git:
+    enabled: false
+    username: null
+    token: null

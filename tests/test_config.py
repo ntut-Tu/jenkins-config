@@ -28,10 +28,12 @@ class ConfigurationTests(unittest.TestCase):
                 yaml.safe_load((self.state/'casc/jenkins.yaml').read_text()))
 
     def test_single_settings_source_and_seed_only(self):
-        self.values.update(admin_user='owner',jenkins_url='https://ci.example.org/',controller_image='registry.example.org:5000/org/jenkins:v2.3.4')
+        self.values['jenkins']['admin']['user']='owner'
+        self.values['jenkins']['url']='https://ci.example.org/'
+        self.values['images']['controller']='registry.example.org:5000/org/jenkins:v2.3.4'
         compose,casc=self.render()
-        self.assertEqual(compose['services']['controller']['image'],self.values['controller_image'])
-        self.assertEqual(casc['unclassified']['location']['url'],self.values['jenkins_url'])
+        self.assertEqual(compose['services']['controller']['image'],self.values['images']['controller'])
+        self.assertEqual(casc['unclassified']['location']['url'],self.values['jenkins']['url'])
         self.assertEqual(casc['jenkins']['securityRealm']['local']['users'][0]['id'],'owner')
         self.assertEqual(set(compose['services']),{'controller','agent'})
         self.assertEqual(casc['jenkins']['numExecutors'],0)
@@ -43,7 +45,9 @@ class ConfigurationTests(unittest.TestCase):
         self.assertNotIn('podTemplate',script)
 
     def test_secrets_remain_references_and_groovy_values_escaped(self):
-        self.values.update(git_credentials=True,application_git_credentials=True,pipeline_repo="https://git.example.org/it's.git")
+        self.values['pipeline']['repository']['url']="https://git.example.org/it's.git"
+        self.values['credentials']['pipeline_git'].update(enabled=True,username='pipeline-user',token='pipeline-token')
+        self.values['credentials']['application_git'].update(enabled=True,username='application-user',token='application-token')
         compose,casc=self.render()
         credentials=[item['usernamePassword'] for item in casc['credentials']['system']['domainCredentials'][0]['credentials']]
         self.assertEqual({item['id'] for item in credentials},{'pipeline-git','application-git'})
@@ -53,33 +57,48 @@ class ConfigurationTests(unittest.TestCase):
         self.assertIn('application_git_token',compose['services']['controller']['secrets'])
         self.assertIn("it\\\\\\'s.git",casc['jobs'][0]['script'])
         self.assertIn('APPLICATION_CREDENTIALS:',casc['jobs'][0]['script'])
+        for value in ('pipeline-user', 'pipeline-token', 'application-user', 'application-token'):
+            self.assertNotIn(value, repr(Settings.from_mapping(self.values)))
+            self.assertNotIn(value, (self.state/'casc/jenkins.yaml').read_text())
+            self.assertNotIn(value, (self.state/'compose.yaml').read_text())
 
     def test_application_credential_can_be_enabled_without_private_pipeline(self):
-        self.values['application_git_credentials']=True
+        self.values['credentials']['application_git'].update(enabled=True,username='test-user',token='test-token')
         compose,casc=self.render()
         credentials=casc['credentials']['system']['domainCredentials'][0]['credentials']
         self.assertEqual([item['usernamePassword']['id'] for item in credentials],['application-git'])
         self.assertNotIn('git_token',compose['services']['controller']['secrets'])
         self.secrets.initialize()
-        with self.assertRaises(FileNotFoundError):
-            self.secrets.validate(False,True)
-        (self.secrets.directory/'application_git_username').write_text('test-user')
-        (self.secrets.directory/'application_git_token').write_text('test-token')
+        self.assertTrue(self.secrets.sync_git(Settings.from_mapping(self.values)))
+        self.assertFalse(self.secrets.sync_git(Settings.from_mapping(self.values)))
         self.secrets.validate(False,True)
+        self.assertEqual(self.secrets.read('application_git_token'),'test-token')
+        self.assertEqual((self.secrets.directory/'application_git_token').stat().st_mode & 0o777,0o600)
+        self.assertFalse((self.secrets.directory/'git_token').exists())
 
     def test_compose_escapes_dollar_in_host_paths(self):
         self.state=self.root/'state$literal'
-        self.values['docker_socket']='/tmp/$literal.sock'
+        self.values['docker']['socket']='/tmp/$literal.sock'
         compose,_=self.render()
         self.assertIn('$$literal',compose['services']['controller']['volumes'][1]['source'])
         self.assertEqual(compose['services']['agent']['volumes'][1]['source'],'/tmp/$$literal.sock')
 
     def test_invalid_settings_are_rejected_before_render(self):
         self.render();before=(self.state/'compose.yaml').read_bytes()
-        cases=[('http_port',True),('docker_socket_gid',-1),('docker_socket','relative'),('controller_image','org/image:latest'),('controller_image','org/image@sha256:bad'),('pipeline_repo','https://user:secret@example.org/r'),('seed_dsl','../jobs'),('pipeline_branch','${SECRET}'),('application_git_credentials','true'),('kubernetes',{}),('unknown','x')]
-        for key,value in cases:
-            with self.subTest(key=key):
-                settings=copy.deepcopy(self.values);settings[key]=value
+        cases=[('jenkins.http_port',True),('docker.socket_gid',-1),('docker.socket','relative'),
+               ('images.controller','org/image:latest'),('images.controller','org/image@sha256:bad'),
+               ('pipeline.repository.url','https://user:secret@example.org/r'),('pipeline.seed.dsl','../jobs'),
+               ('pipeline.repository.branch','${SECRET}'),('credentials.application_git.enabled','true'),
+               ('credentials.pipeline_git.enabled',True),('credentials.application_git.enabled',True),
+               ('credentials.application_git.token','bad\nvalue'),('pipeline.repository.extra','x'),
+               ('kubernetes',{}),('unknown','x')]
+        for path,value in cases:
+            with self.subTest(path=path):
+                settings=copy.deepcopy(self.values)
+                section=settings
+                keys=path.split('.')
+                for key in keys[:-1]: section=section[key]
+                section[keys[-1]]=value
                 with self.assertRaises(ValueError): Settings.from_mapping(settings)
         self.assertEqual((self.state/'compose.yaml').read_bytes(),before)
 
@@ -98,7 +117,8 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual((self.secrets.directory/'admin_password').stat().st_mode & 0o777,0o600)
 
     def test_invalid_agent_secret_never_starts_agent_or_seed(self):
-        self.values.update(controller_image='local/controller:v1',agent_image='local/agent:v1',pipeline_repo='https://example.org/pipelines.git')
+        self.values['images'].update(controller='local/controller:v1',agent='local/agent:v1')
+        self.values['pipeline']['repository']['url']='https://example.org/pipelines.git'
         self.secrets.initialize()
         api=Mock();api.wait.side_effect=[b'{}',b'<jnlp><argument>invalid</argument></jnlp>']
         compose=Mock()
@@ -112,15 +132,17 @@ class ConfigurationTests(unittest.TestCase):
         run.assert_called_once_with(['docker','compose','-f',str(self.state/'compose.yaml'),'down'],check=True)
 
     def test_yaml_password_is_not_rendered_or_in_repr(self):
-        self.values['admin_password'] = 'private-$value:with-quotes!'
+        self.values['jenkins']['admin']['password'] = 'private-$value:with-quotes!'
         settings = Settings.from_mapping(self.values)
         self.render()
-        self.assertNotIn(settings.admin_password, repr(settings))
+        self.assertNotIn(settings.jenkins.admin.password, repr(settings))
         for path in self.state.rglob('*.yaml'):
-            self.assertNotIn(settings.admin_password, path.read_text())
+            self.assertNotIn(settings.jenkins.admin.password, path.read_text())
         for invalid in ('', ' padded ', 123, True, 'two\nlines', '\x00'):
             with self.subTest(value=type(invalid).__name__), self.assertRaises(ValueError):
-                Settings.from_mapping({**self.values, 'admin_password': invalid})
+                values=copy.deepcopy(self.values)
+                values['jenkins']['admin']['password']=invalid
+                Settings.from_mapping(values)
 
     def test_explicit_password_initialization_and_update(self):
         self.secrets.initialize('first-password')
@@ -132,7 +154,9 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual((self.secrets.directory/'admin_password').stat().st_mode & 0o777, 0o600)
 
     def test_up_applies_password_before_recreating_controller(self):
-        self.values.update(controller_image='local/controller:v1',agent_image='local/agent:v1',pipeline_repo='https://example.org/pipelines.git',admin_password='new-password')
+        self.values['images'].update(controller='local/controller:v1',agent='local/agent:v1')
+        self.values['pipeline']['repository']['url']='https://example.org/pipelines.git'
+        self.values['jenkins']['admin']['password']='new-password'
         self.secrets.initialize('old-password')
         api=Mock();api.wait.side_effect=[b'{}',b'<jnlp><argument>'+b'a'*64+b'</argument></jnlp>',b'{"offline":false}']
         compose=Mock()
@@ -143,11 +167,39 @@ class ConfigurationTests(unittest.TestCase):
         manager.up()
         self.assertEqual(compose.execute.call_args_list[0],unittest.mock.call('up','-d','--wait','--wait-timeout','300','--force-recreate','controller'))
 
+    def test_up_syncs_git_credentials_from_settings_before_recreating_controller(self):
+        self.values['images'].update(controller='local/controller:v1',agent='local/agent:v1')
+        self.values['pipeline']['repository']['url']='https://example.org/pipelines.git'
+        self.values['credentials']['pipeline_git'].update(enabled=True,username='pipeline-user',token='new-token')
+        self.secrets.initialize()
+        self.secrets.write('git_token','old-token')
+        api=Mock();api.wait.side_effect=[b'{}',b'<jnlp><argument>'+b'a'*64+b'</argument></jnlp>',b'{"offline":false}']
+        compose=Mock()
+        def verify(*args):
+            self.assertEqual(self.secrets.read('git_username'),'pipeline-user')
+            self.assertEqual(self.secrets.read('git_token'),'new-token')
+        compose.execute.side_effect=verify
+        manager=DeploymentManager(Settings.from_mapping(self.values),self.state,self.renderer,compose,self.secrets,api)
+        manager.up()
+        self.assertEqual(compose.execute.call_args_list[0],unittest.mock.call('up','-d','--wait','--wait-timeout','300','--force-recreate','controller'))
+
     def test_reload_rejects_password_change_without_mutation(self):
-        self.values['admin_password']='new-password'
+        self.values['jenkins']['admin']['password']='new-password'
         self.secrets.initialize('old-password')
         api=Mock()
         manager=DeploymentManager(Settings.from_mapping(self.values),self.state,self.renderer,Mock(),self.secrets,api)
         with self.assertRaisesRegex(ValueError,'deploy.sh'):manager.reload()
         self.assertEqual(self.secrets.read('admin_password'),'old-password')
+        api.request.assert_not_called()
+
+    def test_reload_rejects_git_credential_change_without_mutation(self):
+        self.values['credentials']['pipeline_git'].update(enabled=True,username='pipeline-user',token='new-token')
+        self.secrets.initialize()
+        self.secrets.write('git_username','pipeline-user')
+        self.secrets.write('git_token','old-token')
+        self.render()
+        api=Mock()
+        manager=DeploymentManager(Settings.from_mapping(self.values),self.state,self.renderer,Mock(),self.secrets,api)
+        with self.assertRaisesRegex(ValueError,'deploy.sh'):manager.reload()
+        self.assertEqual(self.secrets.read('git_token'),'old-token')
         api.request.assert_not_called()

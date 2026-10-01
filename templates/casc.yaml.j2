@@ -7,7 +7,7 @@ jenkins:
     local:
       allowsSignup: false
       users:
-        - id: {{ s.admin_user | scalar }}
+        - id: {{ s.jenkins.admin.user | scalar }}
           password: "${admin_password}"
   authorizationStrategy:
     loggedInUsersCanDoAnything:
@@ -40,13 +40,13 @@ security:
             - org.jenkinsci.plugins.authorizeproject.strategy.SystemAuthorizationStrategy
 unclassified:
   location:
-    url: {{ s.jenkins_url | scalar }}
-{% if s.git_credentials or s.application_git_credentials %}
+    url: {{ s.jenkins.url | scalar }}
+{% if s.credentials.pipeline_git.enabled or s.credentials.application_git.enabled %}
 credentials:
   system:
     domainCredentials:
       - credentials:
-{% if s.git_credentials %}
+{% if s.credentials.pipeline_git.enabled %}
           - usernamePassword:
               scope: GLOBAL
               id: pipeline-git
@@ -54,7 +54,7 @@ credentials:
               password: "${git_token}"
               description: Read-only access to the trusted pipelines repository
 {% endif %}
-{% if s.application_git_credentials %}
+{% if s.credentials.application_git.enabled %}
           - usernamePassword:
               scope: GLOBAL
               id: application-git

@@ -1,9 +1,9 @@
-name: {{ s.project | scalar }}
+name: {{ s.project.name | scalar }}
 services:
   controller:
-    image: {{ s.controller_image | scalar }}
+    image: {{ s.images.controller | scalar }}
     restart: unless-stopped
-    ports: [{{ ("127.0.0.1:" ~ s.http_port ~ ":8080") | scalar }}]
+    ports: [{{ ("127.0.0.1:" ~ s.jenkins.http_port ~ ":8080") | scalar }}]
     environment:
       CASC_JENKINS_CONFIG: /etc/jenkins/casc
       SECRETS: /run/secrets
@@ -16,11 +16,11 @@ services:
         read_only: true
     secrets:
       - admin_password
-{% if s.git_credentials %}
+{% if s.credentials.pipeline_git.enabled %}
       - git_username
       - git_token
 {% endif %}
-{% if s.application_git_credentials %}
+{% if s.credentials.application_git.enabled %}
       - application_git_username
       - application_git_token
 {% endif %}
@@ -31,7 +31,7 @@ services:
       retries: 60
       start_period: 30s
   agent:
-    image: {{ s.agent_image | scalar }}
+    image: {{ s.images.agent | scalar }}
     restart: unless-stopped
     environment:
       TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
@@ -40,11 +40,11 @@ services:
       controller: {condition: service_healthy}
     command: [-url, 'http://controller:8080/', -name, docker-agent, -secret, '@/run/secrets/agent_secret', -webSocket, -workDir, /home/jenkins/agent]
     secrets: [agent_secret]
-    group_add: [{{ (s.docker_socket_gid | string) | scalar }}]
+    group_add: [{{ (s.docker.socket_gid | string) | scalar }}]
     volumes:
       - agent-work:/home/jenkins/agent
       - type: bind
-        source: {{ s.docker_socket | compose_scalar }}
+        source: {{ s.docker.socket | compose_scalar }}
         target: /var/run/docker.sock
         bind: {create_host_path: false}
 volumes:
@@ -55,13 +55,13 @@ secrets:
     file: {{ (secrets ~ "/admin_password") | compose_scalar }}
   agent_secret:
     file: {{ (state ~ "/agent_secret") | compose_scalar }}
-{% if s.git_credentials %}
+{% if s.credentials.pipeline_git.enabled %}
   git_username:
     file: {{ (secrets ~ "/git_username") | compose_scalar }}
   git_token:
     file: {{ (secrets ~ "/git_token") | compose_scalar }}
 {% endif %}
-{% if s.application_git_credentials %}
+{% if s.credentials.application_git.enabled %}
   application_git_username:
     file: {{ (secrets ~ "/application_git_username") | compose_scalar }}
   application_git_token:

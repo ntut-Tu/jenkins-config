@@ -13,7 +13,7 @@ uv sync --locked
 cp settings.example.yaml settings.local.yaml
 ```
 
-只編輯 `settings.local.yaml`：映像版本、Jenkins URL／port、流程 repo／分支、seed_dsl／seed_poll、Docker socket／群組 ID。
+只編輯 `settings.local.yaml`：依 `settings.example.yaml` 的 `images`、`jenkins`、`pipeline`、`docker`、`credentials` 區段填值。
 `your-org` 必須換成自己的來源；映像使用明確版本或 digest，不能填 latest／main／字面 v。
 
 ```bash
@@ -33,11 +33,13 @@ cp settings.example.yaml settings.local.yaml
 管理員密碼可在同一份 `settings.local.yaml` 設定：
 
 ```yaml
-admin_user: admin
-admin_password: '填入你的密碼'
+jenkins:
+  admin:
+    user: admin
+    password: '填入你的密碼'
 ```
 
-省略 `admin_password` 或設為 `null` 時，沿用 `.secrets/admin_password`；首次初始化才隨機產生。
+`jenkins.admin.password` 設為 `null` 時，沿用 `.secrets/admin_password`；首次初始化才隨機產生。
 有指定時，`init` 用它建立缺少的秘密檔；`./deploy.sh`／`up` 會同步密碼並重建 controller 套用，保留資料 volume。
 變更密碼請使用 `./deploy.sh`，`reload` 不處理密碼變更。
 密碼不會放入生成的 Compose／JCasC 或命令列輸出。`settings.local.yaml` 已被 Git ignore；請勿提交含真實密碼的 YAML。
@@ -65,11 +67,11 @@ admin_password: '填入你的密碼'
 
 ## 憑證與執行環境
 
-私人流程 repo 設 `git_credentials: true`，另外建立 `.secrets/git_username`、`.secrets/git_token`。
-目前支援 HTTP(S)，帶憑證須使用 HTTPS；Git token 仍放秘密檔，不寫入設定 YAML 或 Git。GHCR 使用本機 `docker login ghcr.io`。
+私人流程 repo 設 `credentials.pipeline_git.enabled: true`，在同區段填入 `username` 和 `token`；被測 repo 使用 `credentials.application_git`。部署時才從本機設定產生秘密檔。
+目前支援 HTTP(S)，帶憑證須使用 HTTPS；`settings.local.yaml` 已被 Git ignore，勿提交真實 token。GHCR 使用本機 `docker login ghcr.io`。
 
 Agent 使用 WebSocket，只有 controller 的 HTTP port 綁定本機；agent 不掛管理員密碼檔。
-Docker socket 的群組填入 docker_socket_gid；Linux 可用 `stat -c %g /var/run/docker.sock` 查詢。
+Docker socket 的群組填入 `docker.socket_gid`；Linux 可用 `stat -c %g /var/run/docker.sock` 查詢。
 
 此部署執行受信任的流程；Docker socket 可控制 daemon，測試容器隔離不等於多租戶安全邊界。
 秘密檔需可由容器 UID 1000 讀取；其他 host UID 需安排適當權限。
@@ -79,7 +81,7 @@ Docker socket 的群組填入 docker_socket_gid；Linux 可用 `stat -c %g /var/
 流程 repo 預設 `jobs/**/*.groovy`，seed 約每 5 分鐘透過 SCM polling 檢查更新。
 Job DSL 可使用 PIPELINE_REPO、PIPELINE_BRANCH、PIPELINE_CREDENTIALS（只含 credential ID）。
 
-Controller 映像須含 authorize-project；seed 以既有 admin_user 身分在 sandbox 執行。
+Controller 映像須含 authorize-project；seed 以 `jenkins.admin.user` 身分在 sandbox 執行。
 新增 Job 只改 pipelines repo；移除定義會停用 Job、保留歷史。其他 seed 的 Job 所有權衝突會失敗。
 
 範例 Job 提供 success／unstable／failure 與 JUnit，仍是手動觸發。
@@ -88,14 +90,14 @@ cloth_shop PR／MR、SSH Git 與進階 GitLab 支援尚未實作，維持 REQ-00
 ## 升級既有部署
 
 1. 備份 Jenkins home 與秘密，保留既有 volumes。
-2. 從 settings.local.yaml 移除 `kubernetes` 區段，其餘欄位與映像名稱不改名。
-3. 更新 controller_image 為移除 K8s 外掛的新映像；agent_image 可沿用。
+2. 依 `settings.example.yaml` 將舊平面欄位移入巢狀區段，移除 `kubernetes` 區段。
+3. 更新 `images.controller` 為移除 K8s 外掛的新映像；`images.agent` 可沿用。
 4. 將新的 Docker 專用 Jenkinsfile 同步到流程 repo，再執行 uv sync／up。
 
-若仍使用更早的 pipeline_path，先改為 seed_dsl 與 seed_poll。
+若仍使用更早的 `pipeline_path`，先改為 `pipeline.seed.dsl` 與 `pipeline.seed.poll`。
 Jenkins home 中的既存外掛不會隨換映像刪除；備份後透過外掛管理移除 K8s 與無其他用途的相依，再重啟。
 
-工作目錄中的舊 Helm chart、K8s 渲染產物與測試 fixture 已清除；本地設定已遷移至 seed 欄位。
+工作目錄中的舊 Helm chart、K8s 渲染產物與測試 fixture 已清除；本地設定已遷移至巢狀欄位。
 `down` 保留資料；備份應在停止服務後進行，勿把 `down -v` 當日常操作。
 
 ## 程式結構與驗證
