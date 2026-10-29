@@ -12,7 +12,7 @@ from .client import JenkinsClient
 from .render import TemplateRenderer
 from .settings import Settings
 
-GIT_SECRET_NAMES = {'git_username', 'git_token', 'application_git_username', 'application_git_token'}
+CREDENTIAL_SECRET_NAMES = {'git_username', 'git_token', 'application_git_username', 'application_git_token', 'github_api_token'}
 
 
 class ComposeClient:
@@ -57,25 +57,27 @@ class SecretStore:
         if path.read_text().strip() != value:
             path.write_text(value)
 
-    def git_values(self, settings):
+    def credential_values(self, settings):
         for credential, names in (
                 (settings.credentials.pipeline_git, ('git_username', 'git_token')),
                 (settings.credentials.application_git, ('application_git_username', 'application_git_token'))):
             if credential.enabled:
                 yield names[0], credential.username
                 yield names[1], credential.token
+        if settings.credentials.github_api.enabled:
+            yield 'github_api_token', settings.credentials.github_api.token
 
-    def sync_git(self, settings):
+    def sync_credentials(self, settings):
         changed = False
-        for name, value in self.git_values(settings):
+        for name, value in self.credential_values(settings):
             path = self.directory / name
             if not path.exists() or path.read_text().strip() != value:
                 changed = True
             self.write(name, value)
         return changed
 
-    def git_matches(self, settings):
-        for name, value in self.git_values(settings):
+    def credentials_match(self, settings):
+        for name, value in self.credential_values(settings):
             try:
                 if self.read(name) != value:
                     return False
@@ -89,12 +91,14 @@ class SecretStore:
             raise ValueError(f'Empty secret file: {name}')
         return value
 
-    def validate(self, git_credentials, application_git_credentials=False):
+    def validate(self, git_credentials, application_git_credentials=False, github_api_credentials=False):
         names = ['admin_password']
         if git_credentials:
             names.extend(['git_username', 'git_token'])
         if application_git_credentials:
             names.extend(['application_git_username', 'application_git_token'])
+        if github_api_credentials:
+            names.append('github_api_token')
         for name in names:
             self.read(name)
 
@@ -112,13 +116,13 @@ class DeploymentManager:
     def render(self):
         self.renderer.render(self.settings, self.state, self.secrets.directory)
 
-    def mounted_git_secrets(self):
+    def mounted_credential_secrets(self):
         try:
             rendered = yaml.safe_load((self.state / 'compose.yaml').read_text())
             mounted = set(rendered['services']['controller'].get('secrets', []))
         except (FileNotFoundError, KeyError, TypeError):
             return set()
-        return mounted & GIT_SECRET_NAMES
+        return mounted & CREDENTIAL_SECRET_NAMES
 
     def up(self):
         if any('your-org' in value for value in (
@@ -127,11 +131,12 @@ class DeploymentManager:
             raise ValueError('Replace example image/repository locations before starting')
         if self.settings.jenkins.admin.password is not None:
             self.secrets.initialize(self.settings.jenkins.admin.password)
-        old_mounts = self.mounted_git_secrets()
-        required_mounts = {name for name, _ in self.secrets.git_values(self.settings)}
-        credentials_changed = self.secrets.sync_git(self.settings)
+        old_mounts = self.mounted_credential_secrets()
+        required_mounts = {name for name, _ in self.secrets.credential_values(self.settings)}
+        credentials_changed = self.secrets.sync_credentials(self.settings)
         self.secrets.validate(self.settings.credentials.pipeline_git.enabled,
-                              self.settings.credentials.application_git.enabled)
+                              self.settings.credentials.application_git.enabled,
+                              self.settings.credentials.github_api.enabled)
         self.render()
         if self.settings.jenkins.admin.password is not None:
             self.secrets.set_admin_password(self.settings.jenkins.admin.password)
@@ -158,11 +163,12 @@ class DeploymentManager:
         if (self.settings.jenkins.admin.password is not None
                 and self.settings.jenkins.admin.password != self.secrets.read('admin_password')):
             raise ValueError('Use deploy.sh or up to apply a changed admin_password')
-        required = {name for name, _ in self.secrets.git_values(self.settings)}
-        if not self.secrets.git_matches(self.settings) or required != self.mounted_git_secrets():
-            raise ValueError('Use deploy.sh or up to apply changed Git credentials')
+        required = {name for name, _ in self.secrets.credential_values(self.settings)}
+        if not self.secrets.credentials_match(self.settings) or required != self.mounted_credential_secrets():
+            raise ValueError('Use deploy.sh or up to apply changed credentials')
         self.secrets.validate(self.settings.credentials.pipeline_git.enabled,
-                              self.settings.credentials.application_git.enabled)
+                              self.settings.credentials.application_git.enabled,
+                              self.settings.credentials.github_api.enabled)
         self.render()
         self.client.request('configuration-as-code/reload', b'')
         self.seed()

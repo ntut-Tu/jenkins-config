@@ -24,6 +24,9 @@ services:
       - application_git_username
       - application_git_token
 {% endif %}
+{% if s.credentials.github_api.enabled %}
+      - github_api_token
+{% endif %}
     healthcheck:
       test: [CMD, curl, -fsS, 'http://localhost:8080/login']
       interval: 5s
@@ -66,4 +69,8 @@ secrets:
     file: {{ (secrets ~ "/application_git_username") | compose_scalar }}
   application_git_token:
     file: {{ (secrets ~ "/application_git_token") | compose_scalar }}
+{% endif %}
+{% if s.credentials.github_api.enabled %}
+  github_api_token:
+    file: {{ (secrets ~ "/github_api_token") | compose_scalar }}
 {% endif %}

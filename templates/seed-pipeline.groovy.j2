@@ -23,7 +23,8 @@ def syncJobs = {
                     PIPELINE_REPO: {{ s.pipeline.repository.url | groovy }},
                     PIPELINE_BRANCH: {{ s.pipeline.repository.branch | groovy }},
                     PIPELINE_CREDENTIALS: {{ ('pipeline-git' if s.credentials.pipeline_git.enabled else '') | groovy }},
-                    APPLICATION_CREDENTIALS: {{ ('application-git' if s.credentials.application_git.enabled else 'none') | groovy }}
+                    APPLICATION_CREDENTIALS: {{ ('application-git' if s.credentials.application_git.enabled else 'none') | groovy }},
+                    GITHUB_API_CREDENTIALS: {{ ('github-api' if s.credentials.github_api.enabled else 'none') | groovy }}
                 ]
         }
     } finally {

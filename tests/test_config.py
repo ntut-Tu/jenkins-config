@@ -69,12 +69,29 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual([item['usernamePassword']['id'] for item in credentials],['application-git'])
         self.assertNotIn('git_token',compose['services']['controller']['secrets'])
         self.secrets.initialize()
-        self.assertTrue(self.secrets.sync_git(Settings.from_mapping(self.values)))
-        self.assertFalse(self.secrets.sync_git(Settings.from_mapping(self.values)))
+        self.assertTrue(self.secrets.sync_credentials(Settings.from_mapping(self.values)))
+        self.assertFalse(self.secrets.sync_credentials(Settings.from_mapping(self.values)))
         self.secrets.validate(False,True)
         self.assertEqual(self.secrets.read('application_git_token'),'test-token')
         self.assertEqual((self.secrets.directory/'application_git_token').stat().st_mode & 0o777,0o600)
         self.assertFalse((self.secrets.directory/'git_token').exists())
+
+    def test_github_api_token_is_secret_and_independent(self):
+        self.values['credentials']['github_api'].update(enabled=True, token='github-test-token')
+        compose, casc = self.render()
+        credentials = casc['credentials']['system']['domainCredentials'][0]['credentials']
+        self.assertEqual(credentials[0]['string']['id'], 'github-api')
+        self.assertEqual(credentials[0]['string']['secret'], '${github_api_token}')
+        self.assertIn('github_api_token', compose['services']['controller']['secrets'])
+        self.assertEqual(compose['services']['agent']['secrets'], ['agent_secret'])
+        self.assertIn('GITHUB_API_CREDENTIALS:', casc['jobs'][0]['script'])
+        self.assertIn('github-api', casc['jobs'][0]['script'])
+        self.assertNotIn('github-test-token', repr(Settings.from_mapping(self.values)))
+        self.assertNotIn('github-test-token', (self.state/'casc/jenkins.yaml').read_text())
+        self.secrets.initialize()
+        self.assertTrue(self.secrets.sync_credentials(Settings.from_mapping(self.values)))
+        self.secrets.validate(False, False, True)
+        self.assertEqual(self.secrets.read('github_api_token'), 'github-test-token')
 
     def test_compose_escapes_dollar_in_host_paths(self):
         self.state=self.root/'state$literal'
@@ -90,7 +107,9 @@ class ConfigurationTests(unittest.TestCase):
                ('pipeline.repository.url','https://user:secret@example.org/r'),('pipeline.seed.dsl','../jobs'),
                ('pipeline.repository.branch','${SECRET}'),('credentials.application_git.enabled','true'),
                ('credentials.pipeline_git.enabled',True),('credentials.application_git.enabled',True),
-               ('credentials.application_git.token','bad\nvalue'),('pipeline.repository.extra','x'),
+               ('credentials.application_git.token','bad\nvalue'),('credentials.github_api.enabled','true'),
+               ('credentials.github_api.enabled',True),('credentials.github_api.token','bad\nvalue'),
+               ('pipeline.repository.extra','x'),
                ('kubernetes',{}),('unknown','x')]
         for path,value in cases:
             with self.subTest(path=path):

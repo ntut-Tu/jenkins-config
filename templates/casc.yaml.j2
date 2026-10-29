@@ -41,7 +41,7 @@ security:
 unclassified:
   location:
     url: {{ s.jenkins.url | scalar }}
-{% if s.credentials.pipeline_git.enabled or s.credentials.application_git.enabled %}
+{% if s.credentials.pipeline_git.enabled or s.credentials.application_git.enabled or s.credentials.github_api.enabled %}
 credentials:
   system:
     domainCredentials:
@@ -61,6 +61,13 @@ credentials:
               username: "${application_git_username}"
               password: "${application_git_token}"
               description: Read-only access to the application repository under test
+{% endif %}
+{% if s.credentials.github_api.enabled %}
+          - string:
+              scope: GLOBAL
+              id: github-api
+              secret: "${github_api_token}"
+              description: Read-only GitHub API access for PR polling
 {% endif %}
 {% endif %}
 jobs:

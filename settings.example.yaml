@@ -51,3 +51,8 @@ credentials:
     enabled: false
     username: null
     token: null
+  # PR 輪詢用 GitHub API token。Private repo 必須啟用；public repo 也建議啟用以提高額度並讓 304 不計主要額度。
+  # fine-grained token 至少給 jenkins-pipelines/value.yaml 所列目標 repo 的 Pull requests: read 權限；不要填在 Job 參數。
+  github_api:
+    enabled: false
+    token: null

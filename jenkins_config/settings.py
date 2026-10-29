@@ -63,9 +63,16 @@ class GitCredentialSettings:
 
 
 @dataclass(frozen=True)
+class ApiCredentialSettings:
+    enabled: bool
+    token: str | None = field(repr=False)
+
+
+@dataclass(frozen=True)
 class CredentialSettings:
     pipeline_git: GitCredentialSettings
     application_git: GitCredentialSettings
+    github_api: ApiCredentialSettings
 
 
 def _section(value, cls, path):
@@ -144,6 +151,12 @@ class Settings:
                 _secret(value, f'credentials.{name}.{field_name}')
                 if credential.enabled and value is None:
                     raise ValueError(f'credentials.{name}.{field_name} is required when enabled')
+        api = self.credentials.github_api
+        if type(api.enabled) is not bool:
+            raise ValueError('credentials.github_api.enabled must be a boolean')
+        _secret(api.token, 'credentials.github_api.token')
+        if api.enabled and api.token is None:
+            raise ValueError('credentials.github_api.token is required when enabled')
         if self.credentials.pipeline_git.enabled and not self.pipeline.repository.url.startswith('https://'):
             raise ValueError('Private pipeline Git credentials require HTTPS')
 
@@ -158,6 +171,7 @@ class Settings:
         credentials = _section(root['credentials'], CredentialSettings, 'credentials')
         for name in ('pipeline_git', 'application_git'):
             credentials[name] = GitCredentialSettings(**_section(credentials[name], GitCredentialSettings, f'credentials.{name}'))
+        credentials['github_api'] = ApiCredentialSettings(**_section(credentials['github_api'], ApiCredentialSettings, 'credentials.github_api'))
         return cls(
             project=ProjectSettings(**_section(root['project'], ProjectSettings, 'project')),
             images=ImageSettings(**_section(root['images'], ImageSettings, 'images')),

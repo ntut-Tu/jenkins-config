@@ -30,6 +30,7 @@ cp settings.example.yaml settings.local.yaml
 | `pipeline.repository.url`、`pipeline.repository.branch` | 指定工作定義所在的 Git 專案與分支 |
 | `credentials.pipeline_git` | 私有 Pipeline 專案的 Git 帳號與 token |
 | `credentials.application_git` | 私有被測專案的 Git 帳號與 token |
+| `credentials.github_api` | PR 輪詢用的唯讀 GitHub API token；與 Git checkout 憑證分開 |
 
 被測專案的 URL 與分支寫在 `jenkins-pipelines` 的 Jenkinsfile。
 `settings.local.yaml` 已被 Git 忽略；不要提交含密碼或 token 的設定檔。
