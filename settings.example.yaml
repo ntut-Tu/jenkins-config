@@ -5,7 +5,7 @@ project:
 
 # Jenkins controller 與 agent 使用的映像；請指定明確版本或 digest。
 images:
-  controller: ghcr.io/ntut-tu/pdd-jenkins-controller:v1.0.4
+  controller: ghcr.io/ntut-tu/pdd-jenkins-controller:v1.0.6
   agent: ghcr.io/ntut-tu/pdd-jenkins-agent:v1.0.4
 
 # Agent 使用的宿主 Docker daemon 與 socket 群組。
