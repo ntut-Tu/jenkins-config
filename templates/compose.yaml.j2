@@ -3,7 +3,7 @@ services:
   controller:
     image: {{ s.images.controller | scalar }}
     restart: unless-stopped
-    ports: [{{ ("127.0.0.1:" ~ s.jenkins.http_port ~ ":8080") | scalar }}]
+    ports: [{{ (s.jenkins.http_port ~ ":8080") | scalar }}]
     environment:
       CASC_JENKINS_CONFIG: /etc/jenkins/casc
       SECRETS: /run/secrets
