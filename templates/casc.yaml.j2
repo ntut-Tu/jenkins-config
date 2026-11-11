@@ -41,7 +41,20 @@ security:
 unclassified:
   location:
     url: {{ s.jenkins.url | scalar }}
-{% if s.credentials.pipeline_git.enabled or s.credentials.application_git.enabled or s.credentials.github_api.enabled %}
+{% if s.gitlab.enabled %}
+  gitlabconnectionconfig:
+    # Webhooks authenticate with the per-job secret token; other /project calls need a Jenkins API token.
+    useAuthenticatedEndpoint: true
+    connections:
+      - name: gitlab
+        url: {{ s.gitlab.url | scalar }}
+        apiTokenId: gitlab-api
+        clientBuilderId: autodetect
+        ignoreCertificateErrors: false
+        connectionTimeout: 10
+        readTimeout: 10
+{% endif %}
+{% if s.credentials.pipeline_git.enabled or s.credentials.application_git.enabled or s.credentials.github_api.enabled or s.gitlab.enabled %}
 credentials:
   system:
     domainCredentials:
@@ -68,6 +81,18 @@ credentials:
               id: github-api
               secret: "${github_api_token}"
               description: Read-only GitHub API access for PR polling
+{% endif %}
+{% if s.gitlab.enabled %}
+          - gitLabApiTokenImpl:
+              scope: SYSTEM
+              id: gitlab-api
+              apiToken: "${gitlab_api_token}"
+              description: GitLab API access for merge request commit statuses
+          - string:
+              scope: GLOBAL
+              id: gitlab-webhook-secret
+              secret: "${gitlab_webhook_secret}"
+              description: Secret token GitLab sends with merge request webhooks
 {% endif %}
 {% endif %}
 jobs:

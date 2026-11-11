@@ -69,6 +69,14 @@ class ApiCredentialSettings:
 
 
 @dataclass(frozen=True)
+class GitLabSettings:
+    enabled: bool
+    url: str | None
+    api_token: str | None = field(repr=False)
+    webhook_secret: str | None = field(repr=False)
+
+
+@dataclass(frozen=True)
 class CredentialSettings:
     pipeline_git: GitCredentialSettings
     application_git: GitCredentialSettings
@@ -89,7 +97,7 @@ def _nonempty(value, path):
 
 def _secret(value, path):
     if value is not None and (not isinstance(value, str) or not value
-            or value != value.strip() or any(part in value for part in ('\n', '\r', '\x00'))):
+                              or value != value.strip() or any(part in value for part in ('\n', '\r', '\x00'))):
         raise ValueError(f'{path} must be null or a nonempty single-line string without surrounding whitespace')
 
 
@@ -100,6 +108,7 @@ class Settings:
     docker: DockerSettings
     jenkins: JenkinsSettings
     pipeline: PipelineSettings
+    gitlab: GitLabSettings
     credentials: CredentialSettings = field(repr=False)
 
     def __post_init__(self):
@@ -159,6 +168,22 @@ class Settings:
             raise ValueError('credentials.github_api.token is required when enabled')
         if self.credentials.pipeline_git.enabled and not self.pipeline.repository.url.startswith('https://'):
             raise ValueError('Private pipeline Git credentials require HTTPS')
+        gitlab = self.gitlab
+        if type(gitlab.enabled) is not bool:
+            raise ValueError('gitlab.enabled must be a boolean')
+        _secret(gitlab.api_token, 'gitlab.api_token')
+        _secret(gitlab.webhook_secret, 'gitlab.webhook_secret')
+        if gitlab.url is not None:
+            _nonempty(gitlab.url, 'gitlab.url')
+            url = urlsplit(gitlab.url)
+            if url.scheme not in ('http', 'https') or not url.hostname or url.username or url.password or url.query or url.fragment:
+                raise ValueError('gitlab.url must be an HTTP(S) URL without embedded credentials')
+        if gitlab.enabled:
+            for name in ('url', 'api_token', 'webhook_secret'):
+                if getattr(gitlab, name) is None:
+                    raise ValueError(f'gitlab.{name} is required when enabled')
+            if not self.credentials.application_git.enabled:
+                raise ValueError('gitlab.enabled requires credentials.application_git for checking out the GitLab project')
 
     @classmethod
     def from_mapping(cls, values):
@@ -178,6 +203,7 @@ class Settings:
             docker=DockerSettings(**_section(root['docker'], DockerSettings, 'docker')),
             jenkins=JenkinsSettings(**jenkins),
             pipeline=PipelineSettings(**pipeline),
+            gitlab=GitLabSettings(**_section(root['gitlab'], GitLabSettings, 'gitlab')),
             credentials=CredentialSettings(**credentials),
         )
 

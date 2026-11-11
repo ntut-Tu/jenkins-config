@@ -5,7 +5,7 @@ project:
 
 # Jenkins controller 與 agent 使用的映像；請指定明確版本或 digest。
 images:
-  controller: ghcr.io/ntut-tu/pdd-jenkins-controller:v1.0.6
+  controller: ghcr.io/ntut-tu/pdd-jenkins-controller:v1.0.7
   agent: ghcr.io/ntut-tu/pdd-jenkins-agent:v1.0.4
 
 # Agent 使用的宿主 Docker daemon 與 socket 群組。
@@ -38,6 +38,17 @@ pipeline:
     dsl: jobs/**/*.groovy
     # 只輪詢 pipeline repo 並觸發 seed；不會自動執行被測專案 Job。
     poll: 'H/5 * * * *'
+
+# 私人 GitLab：MR 目標為 master 時由 webhook 觸發 jenkins-pipelines 的 pdd/go-service，
+# 並以 commit status 回報結果。啟用時須同時啟用 credentials.application_git（checkout GitLab 專案用）。
+gitlab:
+  enabled: false
+  # GitLab 根網址，例如 https://gitlab.example.com/
+  url: null
+  # 回報 commit status 用的 token（Personal／Project／Group access token，需 api scope 與 Developer 以上權限）。
+  api_token: null
+  # GitLab webhook 的 Secret token；自行產生隨機字串，同一值填入 GitLab 專案的 webhook 設定。
+  webhook_secret: null
 
 # Jenkins 要使用的 Git 憑證；目前各支援一組 pipeline repo 與被測 repo。
 credentials:

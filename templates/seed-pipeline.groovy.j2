@@ -4,6 +4,24 @@ properties([
     buildDiscarder(logRotator(numToKeepStr: '30')),
     pipelineTriggers([pollSCM({{ s.pipeline.seed.poll | groovy }})])
 ])
+def runJobDsl = { String gitlabWebhookSecret ->
+    jobDsl targets: {{ s.pipeline.seed.dsl | groovy }},
+        sandbox: true,
+        failOnMissingPlugin: true,
+        failOnSeedCollision: true,
+        removedJobAction: 'DISABLE',
+        removedViewAction: 'IGNORE',
+        lookupStrategy: 'JENKINS_ROOT',
+        additionalParameters: [
+            PIPELINE_REPO: {{ s.pipeline.repository.url | groovy }},
+            PIPELINE_BRANCH: {{ s.pipeline.repository.branch | groovy }},
+            PIPELINE_CREDENTIALS: {{ ('pipeline-git' if s.credentials.pipeline_git.enabled else '') | groovy }},
+            APPLICATION_CREDENTIALS: {{ ('application-git' if s.credentials.application_git.enabled else 'none') | groovy }},
+            GITHUB_API_CREDENTIALS: {{ ('github-api' if s.credentials.github_api.enabled else 'none') | groovy }},
+            // Empty when GitLab is disabled; GitLab Jobs are then not generated.
+            GITLAB_WEBHOOK_SECRET: gitlabWebhookSecret
+        ]
+}
 def syncJobs = {
     try {
         stage('Checkout definitions') {
@@ -12,20 +30,13 @@ def syncJobs = {
                 userRemoteConfigs: [[url: {{ s.pipeline.repository.url | groovy }}{% if s.credentials.pipeline_git.enabled %}, credentialsId: 'pipeline-git'{% endif %}]]])
         }
         stage('Synchronize jobs') {
-            jobDsl targets: {{ s.pipeline.seed.dsl | groovy }},
-                sandbox: true,
-                failOnMissingPlugin: true,
-                failOnSeedCollision: true,
-                removedJobAction: 'DISABLE',
-                removedViewAction: 'IGNORE',
-                lookupStrategy: 'JENKINS_ROOT',
-                additionalParameters: [
-                    PIPELINE_REPO: {{ s.pipeline.repository.url | groovy }},
-                    PIPELINE_BRANCH: {{ s.pipeline.repository.branch | groovy }},
-                    PIPELINE_CREDENTIALS: {{ ('pipeline-git' if s.credentials.pipeline_git.enabled else '') | groovy }},
-                    APPLICATION_CREDENTIALS: {{ ('application-git' if s.credentials.application_git.enabled else 'none') | groovy }},
-                    GITHUB_API_CREDENTIALS: {{ ('github-api' if s.credentials.github_api.enabled else 'none') | groovy }}
-                ]
+{% if s.gitlab.enabled %}
+            withCredentials([string(credentialsId: 'gitlab-webhook-secret', variable: 'GITLAB_WEBHOOK_SECRET')]) {
+                runJobDsl(env.GITLAB_WEBHOOK_SECRET)
+            }
+{% else %}
+            runJobDsl('')
+{% endif %}
         }
     } finally {
         deleteDir()

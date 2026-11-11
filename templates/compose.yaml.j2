@@ -27,6 +27,10 @@ services:
 {% if s.credentials.github_api.enabled %}
       - github_api_token
 {% endif %}
+{% if s.gitlab.enabled %}
+      - gitlab_api_token
+      - gitlab_webhook_secret
+{% endif %}
     healthcheck:
       test: [CMD, curl, -fsS, 'http://localhost:8080/login']
       interval: 5s
@@ -73,4 +77,10 @@ secrets:
 {% if s.credentials.github_api.enabled %}
   github_api_token:
     file: {{ (secrets ~ "/github_api_token") | compose_scalar }}
+{% endif %}
+{% if s.gitlab.enabled %}
+  gitlab_api_token:
+    file: {{ (secrets ~ "/gitlab_api_token") | compose_scalar }}
+  gitlab_webhook_secret:
+    file: {{ (secrets ~ "/gitlab_webhook_secret") | compose_scalar }}
 {% endif %}

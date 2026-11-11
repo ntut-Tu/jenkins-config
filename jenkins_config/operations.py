@@ -12,7 +12,8 @@ from .client import JenkinsClient
 from .render import TemplateRenderer
 from .settings import Settings
 
-CREDENTIAL_SECRET_NAMES = {'git_username', 'git_token', 'application_git_username', 'application_git_token', 'github_api_token'}
+CREDENTIAL_SECRET_NAMES = {'git_username', 'git_token', 'application_git_username', 'application_git_token', 'github_api_token',
+                           'gitlab_api_token', 'gitlab_webhook_secret'}
 
 
 class ComposeClient:
@@ -66,6 +67,9 @@ class SecretStore:
                 yield names[1], credential.token
         if settings.credentials.github_api.enabled:
             yield 'github_api_token', settings.credentials.github_api.token
+        if settings.gitlab.enabled:
+            yield 'gitlab_api_token', settings.gitlab.api_token
+            yield 'gitlab_webhook_secret', settings.gitlab.webhook_secret
 
     def sync_credentials(self, settings):
         changed = False
@@ -91,7 +95,8 @@ class SecretStore:
             raise ValueError(f'Empty secret file: {name}')
         return value
 
-    def validate(self, git_credentials, application_git_credentials=False, github_api_credentials=False):
+    def validate(self, git_credentials, application_git_credentials=False, github_api_credentials=False,
+                 gitlab_credentials=False):
         names = ['admin_password']
         if git_credentials:
             names.extend(['git_username', 'git_token'])
@@ -99,6 +104,8 @@ class SecretStore:
             names.extend(['application_git_username', 'application_git_token'])
         if github_api_credentials:
             names.append('github_api_token')
+        if gitlab_credentials:
+            names.extend(['gitlab_api_token', 'gitlab_webhook_secret'])
         for name in names:
             self.read(name)
 
@@ -136,7 +143,8 @@ class DeploymentManager:
         credentials_changed = self.secrets.sync_credentials(self.settings)
         self.secrets.validate(self.settings.credentials.pipeline_git.enabled,
                               self.settings.credentials.application_git.enabled,
-                              self.settings.credentials.github_api.enabled)
+                              self.settings.credentials.github_api.enabled,
+                              self.settings.gitlab.enabled)
         self.render()
         if self.settings.jenkins.admin.password is not None:
             self.secrets.set_admin_password(self.settings.jenkins.admin.password)
@@ -168,7 +176,8 @@ class DeploymentManager:
             raise ValueError('Use deploy.sh or up to apply changed credentials')
         self.secrets.validate(self.settings.credentials.pipeline_git.enabled,
                               self.settings.credentials.application_git.enabled,
-                              self.settings.credentials.github_api.enabled)
+                              self.settings.credentials.github_api.enabled,
+                              self.settings.gitlab.enabled)
         self.render()
         self.client.request('configuration-as-code/reload', b'')
         self.seed()
