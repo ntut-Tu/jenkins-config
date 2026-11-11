@@ -91,7 +91,7 @@ credentials:
           - usernamePassword:
               scope: GLOBAL
               id: gitlab-git
-              username: oauth2
+              username: {{ s.gitlab.git_username | scalar }}
               password: "${gitlab_api_token}"
               description: Git checkout of GitLab projects with the same GitLab token
           - string:

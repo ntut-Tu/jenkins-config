@@ -72,6 +72,7 @@ class ApiCredentialSettings:
 class GitLabSettings:
     enabled: bool
     url: str | None
+    git_username: str
     api_token: str | None = field(repr=False)
     webhook_secret: str | None = field(repr=False)
 
@@ -171,6 +172,8 @@ class Settings:
         gitlab = self.gitlab
         if type(gitlab.enabled) is not bool:
             raise ValueError('gitlab.enabled must be a boolean')
+        if not isinstance(gitlab.git_username, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+', gitlab.git_username):
+            raise ValueError('Invalid gitlab.git_username')
         _secret(gitlab.api_token, 'gitlab.api_token')
         _secret(gitlab.webhook_secret, 'gitlab.webhook_secret')
         if gitlab.url is not None:

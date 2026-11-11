@@ -45,6 +45,7 @@ gitlab:
   enabled: false
   # GitLab 根網址，例如 https://gitlab.example.com/
   url: null
+  git_username: null
   # GitLab access token（Personal／Project／Group，需 api scope、Developer 以上權限）；
   # 同時用於回報 commit status 與 checkout 專案。
   api_token: null
