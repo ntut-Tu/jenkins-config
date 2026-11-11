@@ -40,12 +40,13 @@ pipeline:
     poll: 'H/5 * * * *'
 
 # 私人 GitLab：MR 目標為 master 時由 webhook 觸發 jenkins-pipelines 的 pdd/go-service，
-# 並以 commit status 回報結果。啟用時須同時啟用 credentials.application_git（checkout GitLab 專案用）。
+# 並以 commit status 回報結果。Jenkins 只需要這裡的 token 與 webhook secret。
 gitlab:
   enabled: false
   # GitLab 根網址，例如 https://gitlab.example.com/
   url: null
-  # 回報 commit status 用的 token（Personal／Project／Group access token，需 api scope 與 Developer 以上權限）。
+  # GitLab access token（Personal／Project／Group，需 api scope、Developer 以上權限）；
+  # 同時用於回報 commit status 與 checkout 專案。
   api_token: null
   # GitLab webhook 的 Secret token；自行產生隨機字串，同一值填入 GitLab 專案的 webhook 設定。
   webhook_secret: null

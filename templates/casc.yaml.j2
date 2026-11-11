@@ -88,6 +88,12 @@ credentials:
               id: gitlab-api
               apiToken: "${gitlab_api_token}"
               description: GitLab API access for merge request commit statuses
+          - usernamePassword:
+              scope: GLOBAL
+              id: gitlab-git
+              username: oauth2
+              password: "${gitlab_api_token}"
+              description: Git checkout of GitLab projects with the same GitLab token
           - string:
               scope: GLOBAL
               id: gitlab-webhook-secret

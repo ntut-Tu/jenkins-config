@@ -182,8 +182,6 @@ class Settings:
             for name in ('url', 'api_token', 'webhook_secret'):
                 if getattr(gitlab, name) is None:
                     raise ValueError(f'gitlab.{name} is required when enabled')
-            if not self.credentials.application_git.enabled:
-                raise ValueError('gitlab.enabled requires credentials.application_git for checking out the GitLab project')
 
     @classmethod
     def from_mapping(cls, values):
